@@ -1,31 +1,35 @@
 #!/usr/bin/env python
 
+import ConfigParser
+import os
+import sys
 from xtunnel.tun.linux import TunDevice
 from xtunnel.xmpp_ import XmppClient
-import sys
 
 
 def usage():
     print '''\
-Usage: %s if account peer
+Usage: %s config
 
-if      -- TUN interface's name, like 'tun0'
-account -- the account used to logon XMPP server, like 'example@gmail.com'
-peer    -- account used by the other host you want to connect to
-
-If TUN interface does not exist, you must run me as root.
+config  -- configuration file.
 ''' % sys.argv[0]
     sys.exit(0)
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) == 2 and sys.argv[1] in ['--help', '-h']:
         usage()
 
-    from getpass import getpass
-    password = getpass('Password for "%s": ' % sys.argv[2])
+    config = ConfigParser.ConfigParser()
+    config.read(os.path.expanduser('~/.xtunnelrc'))
+    if len(sys.argv) > 1:
+        config.read(sys.argv[1])
+    tun_name = config.get('tun', 'name')
+    account = config.get('im', 'account')
+    password = config.get('im', 'password')
+    peer = config.get('im', 'peer')
 
-    tun = TunDevice(sys.argv[1])
-    xmpp = XmppClient(sys.argv[2], password, sys.argv[3], tun)
+    tun = TunDevice(tun_name)
+    xmpp = XmppClient(account, password, peer, tun)
     if not xmpp.connect():
         sys.exit(1)
     tun.writer = xmpp
