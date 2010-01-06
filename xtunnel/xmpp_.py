@@ -1,15 +1,17 @@
 import base64
+import datetime
+import logging
 import threading
 import xmpp
 
 
 class XmppClient(threading.Thread):
 
-    def __init__(self, account, password, peer, writer=None):
+    def __init__(self, config, writer=None):
         threading.Thread.__init__(self)
-        self.jid = xmpp.protocol.JID(account)
-        self.password = password
-        self.peer = peer
+        self.jid = xmpp.protocol.JID(config['account'])
+        self.password = config['password']
+        self.peer = config['peer']
         self.writer = writer
 
         self.client = xmpp.Client(self.jid.getDomain(), debug=[])
@@ -41,4 +43,5 @@ class XmppClient(threading.Thread):
 
     def run(self):
         while True:
+            logging.debug('%s - xmpp' % datetime.datetime.now())
             self.client.Process(1)

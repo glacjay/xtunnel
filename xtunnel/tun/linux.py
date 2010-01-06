@@ -1,4 +1,6 @@
+import datetime
 import fcntl
+import logging
 import os
 import struct
 import threading
@@ -12,12 +14,12 @@ _IFF_MODE  = _IFF_TUN | _IFF_NO_PI
 
 class TunDevice(threading.Thread):
 
-    def __init__(self, tun_name, writer=None):
+    def __init__(self, config, writer=None):
         threading.Thread.__init__(self)
         self.writer = writer
 
         self.tun = open('/dev/net/tun', 'r+b')
-        ifr = struct.pack('16sH', tun_name, _IFF_MODE)
+        ifr = struct.pack('16sH', config['name'], _IFF_MODE)
         ifs = fcntl.ioctl(self.tun, _TUNSETIFF, ifr)
 
     def write(self, message):
@@ -25,5 +27,6 @@ class TunDevice(threading.Thread):
 
     def run(self):
         while True:
+            logging.debug('%s - tun' % datetime.datetime.now())
             message = os.read(self.tun.fileno(), 2000)
             self.writer.write(message)
