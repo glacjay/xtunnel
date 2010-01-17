@@ -3,11 +3,9 @@
 
 import ConfigParser
 import daemon
-import datetime
 import grp
-import lockfile
-import logging
 import os
+import pidlockfile
 import pwd
 import signal
 import sys
@@ -17,68 +15,98 @@ from tun.linux import TUNDevice
 from xmpp_ import XMPPClient
 
 
-logging.basicConfig(filename='/tmp/xtunnel.log', level=logging.DEBUG)
+config = ConfigParser.ConfigParser()
+config.read('/etc/xtunnel.conf')
+pidfile = pidlockfile.TimeoutPIDLockFile(config.get('config', 'pid_path'))
 
 
-def usage():
-    print '''\
-Usage: %s [config]
-
-config -- configuration file (ConfigParser format).
-''' % sys.argv[0]
-    sys.exit(0)
-
-config = None
-tun = None
-im = None
+def check():
+    if pidfile.is_stale():
+        pidfile.break_lock()
+    if pidfile.is_locked():
+        print 'Maybe there is an instance running already?'
+        sys.exit(1)
 
 def init():
-    global config, tun, im
-
-    if len(sys.argv) == 2 and sys.argv[1] in ['--help', '-h']:
-        usage()
-
-    config = ConfigParser.ConfigParser()
-    config.read('/etc/xtunnel.conf')
-    if len(sys.argv) > 1:
-        config.read(sys.argv[1])
-
-    logging.basicConfig(
-            filename=config.get('config', 'log_path'),
-            level=logging.DEBUG)
-
+    global tun, im
     tun = TUNDevice(dict(config.items('tun')))
     im = XMPPClient(dict(config.items('im')), tun)
+    tun.writer = im
     if not im.connect():
         sys.exit(1)
-    tun.writer = im
 
 def run():
-    global tun, im
     tun.start()
     im.start()
-    while True:
-        time.sleep(1)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
-def main():
-    global config, tun, im
+def start():
+    check()
     init()
 
+    stderr = None
+    if config.getboolean('config', 'debug'):
+        stderr = sys.stderr
     context = daemon.DaemonContext(
-        files_preserve=[tun.fileno(), im.fileno()],
-        # chroot_directory=config.get('config', 'chroot_path'),  # can't find /dev/null
-        umask=0o002,
-        pidfile=lockfile.FileLock(config.get('config', 'pid_path')),
-        uid=pwd.getpwnam(config.get('config', 'user')).pw_uid,
-        gid=grp.getgrnam(config.get('config', 'group')).gr_gid,
-        stderr=sys.stderr if config.getboolean('config', 'debug') else None,
-    )
-    context.signal_map = {
-        signal.SIGTERM: 'terminate'
-    }
+            files_preserve=[tun.fileno(), im.fileno()],
+            pidfile=pidfile,
+            uid=pwd.getpwnam(config.get('config', 'user')).pw_uid,
+            gid=grp.getgrnam(config.get('config', 'group')).gr_gid,
+            stderr=stderr,
+            signal_map={signal.SIGTERM: 'terminate'},
+            )
 
     with context:
+        run()
+
+def stop():
+    if not pidfile.is_locked():
+        print 'There is no instance running.'
+        sys.exit(1)
+    if pidfile.is_stale():
+        pidfile.break_lock()
+    else:
+        pid = pidfile.read_pid()
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            print 'Failed to terminate the instance.'
+            sys.exit(1)
+
+def restart():
+    stop()
+    start()
+
+
+action_funcs = {
+    'start'   : start,
+    'stop'    : stop,
+    'restart' : restart,
+}
+
+def do_action():
+    action = sys.argv[1]
+    if action not in action_funcs:
+        print 'Unknown action: %s' % action
+        sys.exit(1)
+    action_funcs[action]()
+
+
+def usage_exit():
+    print '''Usage: %s start|stop|restart''' % sys.argv[0]
+    sys.exit(1)
+
+def main():
+    if len(sys.argv) > 1:
+        do_action()
+    else:
+        check()
+        init()
         run()
 
 
