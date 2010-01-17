@@ -12,7 +12,7 @@ _IFF_NO_PI = 0x1000
 _IFF_MODE  = _IFF_TUN | _IFF_NO_PI
 
 
-class TunDevice(threading.Thread):
+class TUNDevice(threading.Thread):
 
     def __init__(self, config, writer=None):
         threading.Thread.__init__(self)
@@ -25,8 +25,11 @@ class TunDevice(threading.Thread):
     def write(self, message):
         os.write(self.tun.fileno(), message)
 
+    def fileno(self):
+        return self.tun
+
     def run(self):
         while True:
-            logging.debug('%s - tun' % datetime.datetime.now())
+            # logging.debug('%s - tun' % datetime.datetime.now())
             message = os.read(self.tun.fileno(), 2000)
             self.writer.write(message)

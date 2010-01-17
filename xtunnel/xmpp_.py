@@ -5,7 +5,7 @@ import threading
 import xmpp
 
 
-class XmppClient(threading.Thread):
+class XMPPClient(threading.Thread):
 
     def __init__(self, config, writer=None):
         threading.Thread.__init__(self)
@@ -41,7 +41,10 @@ class XmppClient(threading.Thread):
         m = xmpp.protocol.Message(to=self.peer, body=message, typ='chat')
         self.client.send(m)
 
+    def fileno(self):
+        return self.client.Connection._sock
+
     def run(self):
         while True:
-            logging.debug('%s - xmpp' % datetime.datetime.now())
+            # logging.debug('%s - xmpp' % datetime.datetime.now())
             self.client.Process(1)
