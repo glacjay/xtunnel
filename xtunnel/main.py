@@ -12,7 +12,14 @@ import sys
 import time
 
 from tun.linux import TUNDevice
-from xmpp_ import XMPPClient
+from im.xmpp_proto import XMPPClient
+from im.msn_proto import MSNClient
+
+
+proto_map = {
+    'xmpp' : XMPPClient,
+    'msn'  : MSNClient,
+}
 
 
 config = ConfigParser.ConfigParser()
@@ -29,10 +36,17 @@ def check():
 
 def init():
     global tun, im
+
     tun_config = dict(config.items('tun'))
     tun_config.update(user=config.get('config', 'user'))
     tun = TUNDevice(tun_config)
-    im = XMPPClient(dict(config.items('im')), tun)
+
+    try:
+        proto = proto_map[config.get('im', 'protocol')]
+    except KeyError:
+        print 'Unsupported IM protocol "%s".' % config.get('im', 'protocol')
+        sys.exit(1)
+    im = proto(dict(config.items('im')), tun)
     tun.writer = im
     if not im.connect():
         sys.exit(1)
