@@ -82,11 +82,23 @@ def restart():
     stop()
     start()
 
+def stand():
+    check()
+    init()
+    run()
+
+def status():
+    if pidfile.is_locked():
+        print 'There is an instance running.'
+    else:
+        print 'There is no instance running.'
 
 action_funcs = {
     'start'   : start,
     'stop'    : stop,
     'restart' : restart,
+    'stand'   : stand,
+    'status'  : status,
 }
 
 def do_action():
@@ -98,16 +110,14 @@ def do_action():
 
 
 def usage_exit():
-    print '''Usage: %s start|stop|restart''' % sys.argv[0]
+    print '''Usage: %s start|stop|restart|stand|status''' % sys.argv[0]
     sys.exit(1)
 
 def main():
     if len(sys.argv) > 1:
         do_action()
     else:
-        check()
-        init()
-        run()
+        usage_exit()
 
 
 if __name__ == '__main__':
