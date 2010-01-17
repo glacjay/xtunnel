@@ -29,7 +29,9 @@ def check():
 
 def init():
     global tun, im
-    tun = TUNDevice(dict(config.items('tun')))
+    tun_config = dict(config.items('tun'))
+    tun_config.update(user=config.get('config', 'user'))
+    tun = TUNDevice(tun_config)
     im = XMPPClient(dict(config.items('im')), tun)
     tun.writer = im
     if not im.connect():
