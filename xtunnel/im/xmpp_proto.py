@@ -15,6 +15,7 @@ class XMPPClient(threading.Thread):
         self.writer = writer
 
         self.client = xmpp.Client(self.jid.getDomain(), debug=[])
+        self.peer_online = False
 
     def connect(self):
         self.conn = self.client.connect()
@@ -26,25 +27,38 @@ class XMPPClient(threading.Thread):
         if not auth:
             print 'Failed to authenticate you.\nExiting...'
             return False
-        self.client.RegisterHandler('message', self._process)
+        self.client.RegisterHandler('message', self.__message)
+        self.client.RegisterHandler('presence', self.__presence)
         self.client.sendInitPresence()
         return True
 
-    def _process(self, conn, event):
-        type_ = event.getType()
-        peer = event.getFrom().getStripped()
-        if type_ == 'chat' and peer == self.peer:
-            self.writer.write(base64.b64decode(event.getBody()))
+    def __message(self, conn, message):
+        type_ = message.getType()
+        peer = message.getFrom().getStripped()
+        if type_ == 'normal' and peer == self.peer:
+            self.writer.write(base64.b64decode(message.getBody()))
+
+    def __presence(self, conn, presence):
+        type_ = presence.getType()
+        peer = xmpp.protocol.JID(presence.getFrom()).getStripped()
+        if peer != self.peer:
+            return
+        if not type_:
+            self.peer_online = True
+        elif type_ == 'unavailable':
+            self.peer_online = False
+        else:
+            print 'Not support to be that.'
 
     def write(self, message):
-        message = base64.b64encode(message)
-        m = xmpp.protocol.Message(to=self.peer, body=message, typ='chat')
-        self.client.send(m)
+        if self.peer_online:
+            message = base64.b64encode(message)
+            m = xmpp.protocol.Message(to=self.peer, body=message, typ='normal')
+            self.client.send(m)
 
     def fileno(self):
         return self.client.Connection._sock
 
     def run(self):
         while True:
-            # logging.debug('%s - xmpp' % datetime.datetime.now())
             self.client.Process(1)
