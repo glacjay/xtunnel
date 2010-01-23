@@ -13,12 +13,12 @@ import time
 
 from tun.linux import TUNDevice
 from im.xmpp_proto import XMPPClient
-from im.msn_proto import MSNClient
+# from im.msn_proto import MSNClient
 
 
 proto_map = {
     'xmpp' : XMPPClient,
-    'msn'  : MSNClient,
+    # 'msn'  : MSNClient,
 }
 
 
