@@ -11,14 +11,12 @@ import signal
 import sys
 import time
 
-from tun.linux import TUNDevice
+from tap import TAPDevice
 from im.xmpp_proto import XMPPClient
-# from im.msn_proto import MSNClient
 
 
 proto_map = {
     'xmpp' : XMPPClient,
-    # 'msn'  : MSNClient,
 }
 
 
@@ -35,25 +33,25 @@ def check():
         sys.exit(1)
 
 def init():
-    global tun, im
+    global tap, node
 
-    tun_config = dict(config.items('tun'))
-    tun_config.update(user=config.get('config', 'user'))
-    tun = TUNDevice(tun_config)
+    tap_config = dict(config.items('tap'))
+    tap_config.update(user=config.get('config', 'user'))
+    tap = TAPDevice(tap_config)
 
     try:
         proto = proto_map[config.get('im', 'protocol')]
     except KeyError:
         print 'Unsupported IM protocol "%s".' % config.get('im', 'protocol')
         sys.exit(1)
-    im = proto(dict(config.items('im')), tun)
-    tun.writer = im
-    if not im.connect():
+    node = proto(dict(config.items('im')), tap)
+    tap.node = node
+    if not node.connect():
         sys.exit(1)
 
 def run():
-    tun.start()
-    im.start()
+    tap.start()
+    node.start()
     try:
         while True:
             time.sleep(1)
@@ -69,7 +67,7 @@ def start():
     if config.getboolean('config', 'debug'):
         stderr = sys.stderr
     context = daemon.DaemonContext(
-            files_preserve=[tun.fileno(), im.fileno()],
+            files_preserve=[tap.fileno(), node.fileno()],
             pidfile=pidfile,
             uid=pwd.getpwnam(config.get('config', 'user')).pw_uid,
             gid=grp.getgrnam(config.get('config', 'group')).gr_gid,
