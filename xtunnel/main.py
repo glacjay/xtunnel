@@ -12,7 +12,7 @@ import sys
 import time
 
 from tap import TAPDevice
-from im.xmpp_proto import XMPPClient
+from xmpp_proto import XMPPClient
 
 
 proto_map = {
