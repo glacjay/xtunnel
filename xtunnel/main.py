@@ -79,7 +79,6 @@ class Host(object):
             self.socket.send(header + str(client.jid))
 
     def set_link(self, socket_, buffer):
-        print '*** set link'
         self.socket = socket_
         self.buffer = buffer
         self.process()
@@ -91,13 +90,11 @@ class Host(object):
             return None
 
     def read(self):
-        print '*** read'
         self.buffer += self.socket.recv(2000)
         self.process()
 
     def process(self):
         buf = self.buffer
-        print '*** process: %d' % len(buf)
         while True:
             if len(buf) < 2:
                 break
@@ -106,7 +103,6 @@ class Host(object):
                 break
             tap.write(buf[2:2+len_])
             frame = Frame(buf[2:2+len_])
-            print '*** Frame type: %s' % frame.get_type()
             self.buffer = buf = self.buffer[2+len_:]
 
     def send_frame(self, frame):
@@ -160,12 +156,9 @@ class HostManager(object):
                     client.send_frame(host.jid, frame)
 
         else:
-            print '*** Unsupported Ethernet Frame Type: %s' % frame.type_
+            print '*** Unsupported Ethernet Frame Type: %s' % repr(frame.type_)
 
     def get_linked_hosts(self):
-        for host in filter(lambda x: x.fileno(), self.jid_index.values()):
-            print host.jid, host.socket
-        print
         return filter(lambda x: x.fileno(), self.jid_index.values())
 
 ##################################################
@@ -307,7 +300,7 @@ class Pending(object):
                     host.set_link(self.socket, buf[2+len_:])
                 else:
                     self.socket.close()
-                    listener.close_link(self)
+                listener.close_link(self)
 
 
 class Listener(object):
@@ -363,10 +356,10 @@ def run():
     try:
         while True:
             input = [tap, client]
+            input.extend(hosts.get_linked_hosts())
             if listener:
                 input.append(listener)
                 input.extend(listener.pendings)
-                input.extend(hosts.get_linked_hosts())
             (input, _, _) = select.select(input, [], [], 3)
             for i in input:
                 i.read()
