@@ -239,6 +239,14 @@ class XMPPClient(object):
         type_ = presence.getType()
         jid = presence.getFrom()
 
+        # When I login to the gtalk server, I have set my resource name to
+        # 'xtunnel'.  But when I get the presence information, the server
+        # will add some random characters after the resource string.
+        # Following lines is to deal with this situation.
+        if not jid.getResource().startswith('xtunnel'):
+            return
+        jid.setResource('xtunnel')
+
         if jid == self.jid:
             return          # TODO google kick me out?
 
@@ -266,10 +274,6 @@ class XMPPClient(object):
 
     def read(self):
         self.client.Process()
-
-    def add_link(self, jid, sock, buf):
-        jid = JID(jid)
-        self.hosts.by_jid(jid).set_link(sock, buf)
 
     def send_frame(self, jid, frame):
         message = base64.b64encode(repr(frame))
