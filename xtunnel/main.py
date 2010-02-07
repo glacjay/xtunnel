@@ -206,7 +206,7 @@ class XMPPClient(object):
         self.jid = JID(config.get('im', 'account'))
         self.jid.setResource('xtunnel')
         self.password = config.get('im', 'password')
-        self.client = Client(self.jid.getDomain())
+        self.debug = config.get('config', 'debug') == 'true'
 
         self.status = 'Internal %s %s' % (tap.ip, tap.mac)
         if config.has_option('im', 'ip'):
@@ -215,8 +215,7 @@ class XMPPClient(object):
             self.status = 'External %s %s %s %s' % (
                     tap.ip, tap.mac, eip, eport)
 
-        if not self.connect():
-            sys.exit(1)
+        self.reconnect()
 
     def connect(self):
         if not self.client.connect():
@@ -273,14 +272,38 @@ class XMPPClient(object):
         tap.write(base64.b64decode(message.getBody()))
 
     def read(self):
-        self.client.Process()
+        try:
+            self.client.Process()
+        except:
+            self.reconnect()
 
     def send_frame(self, jid, frame):
         message = base64.b64encode(repr(frame))
-        self.client.send(Message(to=jid, typ='normal', body=message))
+        try:
+            self.client.send(Message(to=jid, typ='normal', body=message))
+        except:
+            self.reconnect()
 
     def fileno(self):
         return self.client.Connection._sock.fileno()
+
+    def reconnect(self):
+        try:
+            time.sleep(7)
+            self.client.disconnect()
+        except:
+            pass
+
+        if self.debug:
+            self.client = Client(self.jid.getDomain())
+        else:
+            self.client = Client(self.jid.getDomain(), debug=[])
+
+        try:
+            if not self.connect():
+                self.reconnect()
+        except:
+            self.reconnect()
 
 
 class Pending(object):
@@ -375,11 +398,14 @@ def start():
     check()
     init()
 
+    files = [tap.fileno(), client.fileno()]
+    if listener:
+        files.append(listener.fileno())
     stderr = None
     if config.getboolean('config', 'debug'):
         stderr = sys.stderr
     context = daemon.DaemonContext(
-            files_preserve=[tap.fileno(), node.fileno()],
+            files_preserve=files,
             pidfile=pidfile,
             uid=pwd.getpwnam(config.get('config', 'user')).pw_uid,
             gid=grp.getgrnam(config.get('config', 'group')).gr_gid,
@@ -406,6 +432,7 @@ def stop():
 
 def restart():
     stop()
+    time.sleep(7)
     start()
 
 def stand():
