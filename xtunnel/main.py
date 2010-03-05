@@ -20,6 +20,14 @@ import time
 from xmpp import Client
 from xmpp.protocol import JID, Message, Presence
 
+config = None
+pidfile = None
+
+tap = None
+client = None
+hosts = None
+listener = None
+
 
 ##################################################
 # Utils
@@ -352,17 +360,6 @@ class Listener(object):
     def close_link(self, pending):
         self.pendings.remove(pending)
 
-
-config = ConfigParser.ConfigParser()
-config.read('/etc/xtunnel.conf')
-pidfile = pidlockfile.TimeoutPIDLockFile(config.get('config', 'pid_path'))
-
-tap = None
-client = None
-hosts = None
-listener = None
-
-
 def check():
     if pidfile.is_stale():
         pidfile.break_lock()
@@ -446,32 +443,29 @@ def status():
     else:
         print 'There is no instance running.'
 
-action_funcs = {
-    'start'   : start,
-    'stop'    : stop,
-    'restart' : restart,
-    'stand'   : stand,
-    'status'  : status,
-}
-
-def do_action():
-    action = sys.argv[1]
-    if action not in action_funcs:
-        print 'Unknown action: %s' % action
-        sys.exit(1)
-    action_funcs[action]()
-
-
 def usage_exit():
     print '''Usage: %s start|stop|restart|stand|status''' % sys.argv[0]
     sys.exit(1)
 
 def main():
-    if len(sys.argv) > 1:
-        do_action()
-    else:
-        usage_exit()
+    try:
+        action = globals()[sys.argv[1]]
 
+        # Parse config file
+        config = ConfigParser.ConfigParser()
+        __user_conf = os.path.expanduser('~/.xtunnel')
+        if os.path.exists(__user_conf):
+            config_file = __user_conf
+        else:
+            config_file = '/etc/xtunnel.conf'
+        config.read(config_file)
+
+        pidfile = pidlockfile.TimeoutPIDLockFile(config.get('config', 'pid_path'))
+
+        action()
+    except Exception:
+        usage_exit()
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
