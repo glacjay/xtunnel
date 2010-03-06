@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 import base64
 import ConfigParser
 import daemon
@@ -20,18 +19,30 @@ import time
 from xmpp import Client
 from xmpp.protocol import JID, Message, Presence
 
-config = None
+##################################################
+# Config file location
+##################################################
+
+user_conf_file = os.path.expanduser('~/.xtunnel')
+sys_conf_file = '/etc/xtunnel.conf'
+
+def find_config_file():
+    if os.path.exists(user_conf_file):
+        return user_conf_file
+    elif os.path.exists(sys_conf_file):
+        return sys_conf_file
+
+##################################################
+# Utils
+##################################################
+
+config = ConfigParser.ConfigParser()
 pidfile = None
 
 tap = None
 client = None
 hosts = None
 listener = None
-
-
-##################################################
-# Utils
-##################################################
 
 class Frame(object):
 
@@ -182,9 +193,10 @@ class TAPDevice(object):
     IFF_NO_PI = 0x1000
 
     address_file = '/sys/devices/virtual/net/tap7/address'
+    device_file = '/dev/net/tun' # default linux
 
     def __init__(self):
-        self.tap = open('/dev/net/tun', 'r+b')
+        self.tap = open(self.device_file, 'r+b')
         ifr = struct.pack('16sH', 'tap7', self.IFF_TAP|self.IFF_NO_PI)
         ifs = fcntl.ioctl(self.tap, self.TUNSETIFF, ifr)
         fcntl.ioctl(self.tap, self.TUNSETOWNER,
@@ -391,81 +403,89 @@ def run():
         client.client.disconnect()
 
 
-def start():
-    check()
-    init()
+# Define valid command line commands
+class Command():
+    @staticmethod
+    def start():
+        check()
+        init()
 
-    files = [tap.fileno(), client.fileno()]
-    if listener:
-        files.append(listener.fileno())
-    stderr = None
-    if config.getboolean('config', 'debug'):
-        stderr = sys.stderr
-    context = daemon.DaemonContext(
-            files_preserve=files,
-            pidfile=pidfile,
-            uid=pwd.getpwnam(config.get('config', 'user')).pw_uid,
-            gid=grp.getgrnam(config.get('config', 'group')).gr_gid,
-            stderr=stderr,
-            signal_map={signal.SIGTERM: 'terminate'},
-            )
+        files = [tap.fileno(), client.fileno()]
+        if listener:
+            files.append(listener.fileno())
+        stderr = None
+        if config.getboolean('config', 'debug'):
+            stderr = sys.stderr
+        context = daemon.DaemonContext(
+                files_preserve=files,
+                pidfile=pidfile,
+                uid=pwd.getpwnam(config.get('config', 'user')).pw_uid,
+                gid=grp.getgrnam(config.get('config', 'group')).gr_gid,
+                stderr=stderr,
+                signal_map={signal.SIGTERM: 'terminate'},
+                )
 
-    with context:
+        with context:
+            run()
+
+    @staticmethod
+    def stop():
+        if not pidfile.is_locked():
+            print 'There is no instance running.'
+            sys.exit(1)
+        if pidfile.is_stale():
+            pidfile.break_lock()
+        else:
+            pid = pidfile.read_pid()
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                print 'Failed to terminate the instance.'
+                sys.exit(1)
+
+    @staticmethod
+    def restart():
+        stop()
+        time.sleep(7)
+        start()
+
+    @staticmethod
+    def stand():
+        check()
+        init()
         run()
 
-def stop():
-    if not pidfile.is_locked():
-        print 'There is no instance running.'
-        sys.exit(1)
-    if pidfile.is_stale():
-        pidfile.break_lock()
-    else:
-        pid = pidfile.read_pid()
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            print 'Failed to terminate the instance.'
-            sys.exit(1)
+    @staticmethod
+    def status():
+        if pidfile.is_locked():
+            print 'There is an instance running.'
+        else:
+            print 'There is no instance running.'
 
-def restart():
-    stop()
-    time.sleep(7)
-    start()
-
-def stand():
-    check()
-    init()
-    run()
-
-def status():
-    if pidfile.is_locked():
-        print 'There is an instance running.'
-    else:
-        print 'There is no instance running.'
-
-def usage_exit():
+def usage_exit(code):
     print '''Usage: %s start|stop|restart|stand|status''' % sys.argv[0]
-    sys.exit(1)
+    sys.exit(code)
 
 def main():
-    try:
-        action = globals()[sys.argv[1]]
+    global pidfile
 
-        # Parse config file
-        config = ConfigParser.ConfigParser()
-        __user_conf = os.path.expanduser('~/.xtunnel')
-        if os.path.exists(__user_conf):
-            config_file = __user_conf
-        else:
-            config_file = '/etc/xtunnel.conf'
+    try:
+        action = getattr(Command, sys.argv[1])
+    except Exception:
+        # Either because no command is given or command is invalid
+        usage_exit(1)
+
+    # Parse config file
+    config_file = find_config_file()
+    if not config_file:
+        print 'No config file found'
+        sys.exit(1)
+    else:
         config.read(config_file)
 
-        pidfile = pidlockfile.TimeoutPIDLockFile(config.get('config', 'pid_path'))
+    pidfile = pidlockfile.TimeoutPIDLockFile(config.get('config', 'pid_path'))
 
-        action()
-    except Exception:
-        usage_exit()
-        sys.exit(1)
+    action()
 
 if __name__ == '__main__':
     main()
