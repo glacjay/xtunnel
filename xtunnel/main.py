@@ -6,7 +6,7 @@ import daemon
 import fcntl
 import grp
 import os
-import pidlockfile
+from lockfile import pidlockfile
 import pwd
 import select
 import signal
@@ -27,6 +27,7 @@ user_conf_file = os.path.expanduser('~/.xtunnel')
 sys_conf_file = '/etc/xtunnel.conf'
 
 def find_config_file():
+    print user_conf_file
     if os.path.exists(user_conf_file):
         return user_conf_file
     elif os.path.exists(sys_conf_file):
@@ -192,7 +193,7 @@ class TAPDevice(object):
                 self.ip, self.mask)
         subprocess.check_call(command, shell=True)
 
-    def create_tap_linux(self):
+    def create_tap_linux2(self):
         TUNSETIFF = 0x400454ca
         TUNSETOWNER = TUNSETIFF + 2
         IFF_TUN   = 0x0001
@@ -202,18 +203,18 @@ class TAPDevice(object):
         address_file = '/sys/class/net/tap' + self.devnum + '/address'
         device_file = '/dev/net/tun'
 
-        self.tap = open(self.device_file, 'r+b')
-        ifr = struct.pack('16sH', self.interface, self.IFF_TAP|self.IFF_NO_PI)
-        ifs = fcntl.ioctl(self.tap, self.TUNSETIFF, ifr)
-        fcntl.ioctl(self.tap, self.TUNSETOWNER,
+        self.tap = open(device_file, 'r+b')
+        ifr = struct.pack('16sH', self.interface, IFF_TAP|IFF_NO_PI)
+        ifs = fcntl.ioctl(self.tap, TUNSETIFF, ifr)
+        fcntl.ioctl(self.tap, TUNSETOWNER,
                 pwd.getpwnam(config.get('config', 'user')).pw_uid)
 
         self.__ifconfig()
 
         self.mac = filter(lambda x: x != ':',
-                open(self.address_file).read().strip())
+                open(address_file).read().strip())
 
-    def create_tap_osx(self):
+    def create_tap_darwin(self):
         self.tap = open('/dev/' + self.interface, 'r+b')
 
         self.__ifconfig()
@@ -232,10 +233,7 @@ class TAPDevice(object):
         self.ip = config.get('tap', 'ip')
         self.mask = config.get('tap', 'mask')
 
-        if sys.platform == 'linux':
-            create_tap_linux()
-        elif sys.platform == 'darwin':
-            self.create_tap_osx()
+        getattr(self, "create_tap_" + sys.platform)()
 
     def read(self):
         hosts.handle_frame(Frame(os.read(self.tap.fileno(), 2000)))
@@ -400,8 +398,6 @@ class Listener(object):
         self.pendings.remove(pending)
 
 def check():
-    if pidfile.is_stale():
-        pidfile.break_lock()
     if pidfile.is_locked():
         print 'Maybe there is an instance running already?'
         sys.exit(1)
@@ -460,15 +456,11 @@ class Command():
         if not pidfile.is_locked():
             print 'There is no instance running.'
             sys.exit(1)
-        if pidfile.is_stale():
-            pidfile.break_lock()
-        else:
-            pid = pidfile.read_pid()
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                print 'Failed to terminate the instance.'
-                sys.exit(1)
+        try:
+            os.kill(pidfile.pid, signal.SIGTERM)
+        except OSError:
+            print 'Failed to terminate the instance.'
+            sys.exit(1)
 
     @staticmethod
     def restart():
@@ -510,7 +502,7 @@ def main():
     else:
         config.read(config_file)
 
-    pidfile = pidlockfile.TimeoutPIDLockFile(config.get('config', 'pid_path'))
+    pidfile = pidlockfile.PIDLockFile(config.get('config', 'pid_path'))
 
     action()
 
