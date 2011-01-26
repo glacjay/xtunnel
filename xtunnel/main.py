@@ -27,7 +27,6 @@ user_conf_file = os.path.expanduser('~/.xtunnel')
 sys_conf_file = '/etc/xtunnel.conf'
 
 def find_config_file():
-    print user_conf_file
     if os.path.exists(user_conf_file):
         return user_conf_file
     elif os.path.exists(sys_conf_file):
@@ -378,11 +377,11 @@ class Pending(object):
 class Listener(object):
 
     def __init__(self):
-        self.eip = config.get('im', 'ip')
+        #self.eip = config.get('im', 'ip')
         self.eport = config.getint('im', 'port')
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind((self.eip, self.eport))
+        self.socket.bind(('0.0.0.0', self.eport))
         self.socket.listen(10)      # TODO enough?
 
         self.pendings = []
