@@ -186,29 +186,56 @@ class HostManager(object):
 
 class TAPDevice(object):
 
-    TUNSETIFF = 0x400454ca
-    TUNSETOWNER = TUNSETIFF + 2
-    IFF_TUN   = 0x0001
-    IFF_TAP   = 0x0002
-    IFF_NO_PI = 0x1000
+    def __ifconfig(self):
+        # used on Linux and OS X
+        command = 'ifconfig %s %s netmask %s up' % (self.interface,
+                self.ip, self.mask)
+        subprocess.check_call(command, shell=True)
 
-    address_file = '/sys/devices/virtual/net/tap7/address'
-    device_file = '/dev/net/tun' # default linux
+    def create_tap_linux(self):
+        TUNSETIFF = 0x400454ca
+        TUNSETOWNER = TUNSETIFF + 2
+        IFF_TUN   = 0x0001
+        IFF_TAP   = 0x0002
+        IFF_NO_PI = 0x1000
 
-    def __init__(self):
+        address_file = '/sys/class/net/tap' + self.devnum + '/address'
+        device_file = '/dev/net/tun'
+
         self.tap = open(self.device_file, 'r+b')
-        ifr = struct.pack('16sH', 'tap7', self.IFF_TAP|self.IFF_NO_PI)
+        ifr = struct.pack('16sH', self.interface, self.IFF_TAP|self.IFF_NO_PI)
         ifs = fcntl.ioctl(self.tap, self.TUNSETIFF, ifr)
         fcntl.ioctl(self.tap, self.TUNSETOWNER,
                 pwd.getpwnam(config.get('config', 'user')).pw_uid)
 
-        self.ip = config.get('tap', 'ip')
-        command = 'ifconfig tap7 %s netmask %s up' % (
-                self.ip, config.get('tap', 'mask'))
-        subprocess.check_call(command, shell=True)
+        self.__ifconfig()
 
         self.mac = filter(lambda x: x != ':',
                 open(self.address_file).read().strip())
+
+    def create_tap_osx(self):
+        self.tap = open('/dev/' + self.interface, 'r+b')
+
+        self.__ifconfig()
+
+        # read mac address from the output of ifconfig
+        # is there any better way to do this?
+        outfd = subprocess.Popen(["ifconfig", self.interface],
+                stdout=subprocess.PIPE).stdout
+        outfd.readline() # skip the first line
+        self.mac = filter(lambda x: x != ':', outfd.readline().split()[1])
+
+    def __init__(self):
+        self.devnum = config.get('tap', 'devnum')
+        self.interface = 'tap' + self.devnum
+
+        self.ip = config.get('tap', 'ip')
+        self.mask = config.get('tap', 'mask')
+
+        if sys.platform == 'linux':
+            create_tap_linux()
+        elif sys.platform == 'darwin':
+            self.create_tap_osx()
 
     def read(self):
         hosts.handle_frame(Frame(os.read(self.tap.fileno(), 2000)))
